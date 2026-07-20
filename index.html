@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SLOWHAND ∞ — Blues Guitar Solo Engine</title>
+    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <script>
+      // Salamanderサンプルをローカルに置く場合はコメントを外す
+      // (public/salamander/ にA2.mp3等を配置)
+      window.SALAMANDER_BASE = "/salamander/";
+      window.GUITAR_SAMPLE_BASE = "/guitar-electric/";
+    </script>
+    <style>body { margin: 0; background: #100B08; }</style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

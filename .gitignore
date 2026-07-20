@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.DS_Store
+.claude/settings.local.json
+
+# サンプル音源はリポジトリに含めない(npm run fetch-samples で取得)
+public/salamander/
+public/guitar-electric/
