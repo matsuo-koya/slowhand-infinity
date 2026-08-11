@@ -6,10 +6,13 @@
     <title>SLOWHAND ∞ — Blues Guitar Solo Engine</title>
     <script src="https://cdn.tailwindcss.com/3.4.16"></script>
     <script>
-      // Salamanderサンプルをローカルに置く場合はコメントを外す
-      // (public/salamander/ にA2.mp3等を配置)
-      window.SALAMANDER_BASE = "/salamander/";
-      window.GUITAR_SAMPLE_BASE = "/guitar-electric/";
+      // サンプルをローカルに置く場合はコメントを外す
+      // (npm run fetch-samples で public/salamander/ 等へ取得)
+      // 既定では tonejs.github.io / nbrosowsky.github.io から読む。
+      // ルート絶対パスのままだとサブパス配信(GitHub Pages)で必ず404になり、
+      // サンプラーではなくシンセ合成に落ちる
+      // window.SALAMANDER_BASE = "/salamander/";
+      // window.GUITAR_SAMPLE_BASE = "/guitar-electric/";
     </script>
     <style>body { margin: 0; background: #100B08; }</style>
   </head>

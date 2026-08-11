@@ -8,6 +8,10 @@
 - **音色**: PigNose風ナチュラルオーバードライブ〜ディストーション(非対称指数カーブ+整流管サグ)、ウーマントーン、BPM同期ワウ、キャビネットシミュレーション、ステレオ定位
 - **時代セレクタ**: おまかせ / Cream期 / Dominos期
 
+## デモ
+
+**→ https://matsuo-koya.github.io/slowhand-infinity/**
+
 ## セットアップ
 
 ```bash
