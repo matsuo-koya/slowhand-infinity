@@ -492,7 +492,7 @@ export default function SlowhandInfinity() {
   const [gtrVol, setGtrVol] = useState(40);
   const [gtrDrive, setGtrDrive] = useState(70);
   const [gtrRev, setGtrRev] = useState(35);
-  const [vibDepth, setVibDepth] = useState(70); // ビブラートの深さ。50=従来 / 100=2倍
+  const [vibDepth, setVibDepth] = useState(85); // ビブラートの深さ。50=従来 / 100=2倍(上限150まで伸ばしてある)
   const [timing, setTiming] = useState(50);    // タイミングのゆらぎ。0=グリッド上ちょうど / 50=従来 / 100=2倍
   const [bandVol, setBandVol] = useState(80);
   const [pianoLabel, setPianoLabel] = useState("");
@@ -1757,7 +1757,7 @@ export default function SlowhandInfinity() {
             </div>
             <Knob label="ドライブ" value={gtrDrive} onChange={setGtrDrive} />
             <Knob label="リバーブ" value={gtrRev} onChange={setGtrRev} />
-            <Knob label="ビブラート" value={vibDepth} onChange={setVibDepth} />
+            <Knob label="ビブラート" value={vibDepth} onChange={setVibDepth} max={150} />
             <Knob label="タイミングのゆらぎ" value={timing} onChange={setTiming} />
             <Knob label="ギター音量" value={gtrVol} onChange={setGtrVol} />
             <Knob label="バッキング音量" value={bandVol} onChange={setBandVol} />
