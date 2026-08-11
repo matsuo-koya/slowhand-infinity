@@ -492,6 +492,7 @@ export default function SlowhandInfinity() {
   const [gtrVol, setGtrVol] = useState(40);
   const [gtrDrive, setGtrDrive] = useState(70);
   const [gtrRev, setGtrRev] = useState(35);
+  const [vibDepth, setVibDepth] = useState(70); // ビブラートの深さ。50=従来 / 100=2倍
   const [bandVol, setBandVol] = useState(80);
   const [pianoLabel, setPianoLabel] = useState("");
   const [gtrLabel, setGtrLabel] = useState("");
@@ -507,7 +508,7 @@ export default function SlowhandInfinity() {
   const vidRef = useRef(null);
   const midiKeepRef = useRef(null);
 
-  ctl.current = { keyIdx, feelId, era, womanTone, wahOn, autoEnergy, manualEnergy, gtrVol, gtrDrive, gtrRev, bandVol };
+  ctl.current = { keyIdx, feelId, era, womanTone, wahOn, autoEnergy, manualEnergy, gtrVol, gtrDrive, gtrRev, bandVol, vibDepth };
 
   // ---------- audio graph ----------
   const buildAudio = useCallback(async () => {
@@ -742,7 +743,8 @@ export default function SlowhandInfinity() {
           const tv = tm - del;
           const ramp = Math.min(1, tv / (art === "sb" ? 0.18 : 0.3)); // 歌わせ版は速めに食いつく
           const grow = 1 + 0.5 * Math.min(1, tv / 1.1); // ロングトーンほど深く(最大約1.5倍、揺れ幅は安定重視)
-          const depth = (soft ? 34 : 40) * ramp * grow;
+          const vibScale = (ctl.current.vibDepth ?? 70) / 50; // 50で従来の深さ
+          const depth = (soft ? 34 : 40) * ramp * grow * vibScale;
           // 半波ロブ: 弦を押し上げて戻す実際の指の動き。通常は基音から上へ、
           // チョーキング到達後(bv/Bv/sb)は到達音から下に戻す方向に粘る
           const lobe = 0.5 * (1 - Math.cos(vibPh));
@@ -1750,6 +1752,7 @@ export default function SlowhandInfinity() {
             </div>
             <Knob label="ドライブ" value={gtrDrive} onChange={setGtrDrive} />
             <Knob label="リバーブ" value={gtrRev} onChange={setGtrRev} />
+            <Knob label="ビブラート" value={vibDepth} onChange={setVibDepth} />
             <Knob label="ギター音量" value={gtrVol} onChange={setGtrVol} />
             <Knob label="バッキング音量" value={bandVol} onChange={setBandVol} />
           </div>
