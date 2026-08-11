@@ -493,6 +493,7 @@ export default function SlowhandInfinity() {
   const [gtrDrive, setGtrDrive] = useState(70);
   const [gtrRev, setGtrRev] = useState(35);
   const [vibDepth, setVibDepth] = useState(70); // ビブラートの深さ。50=従来 / 100=2倍
+  const [timing, setTiming] = useState(50);    // タイミングのゆらぎ。0=グリッド上ちょうど / 50=従来 / 100=2倍
   const [bandVol, setBandVol] = useState(80);
   const [pianoLabel, setPianoLabel] = useState("");
   const [gtrLabel, setGtrLabel] = useState("");
@@ -508,7 +509,7 @@ export default function SlowhandInfinity() {
   const vidRef = useRef(null);
   const midiKeepRef = useRef(null);
 
-  ctl.current = { keyIdx, feelId, era, womanTone, wahOn, autoEnergy, manualEnergy, gtrVol, gtrDrive, gtrRev, bandVol, vibDepth };
+  ctl.current = { keyIdx, feelId, era, womanTone, wahOn, autoEnergy, manualEnergy, gtrVol, gtrDrive, gtrRev, bandVol, vibDepth, timing };
 
   // ---------- audio graph ----------
   const buildAudio = useCallback(async () => {
@@ -1233,6 +1234,9 @@ export default function SlowhandInfinity() {
       evs[k].hv = 0.85;
     }
     const up = c.feelId === "up";
+    // ヒューマンファクターの総量。0にするとグリッド上ちょうどにピッキングする
+    // (シャッフルの三連グリッド gt() 自体はノリなので、ここでは触らない)
+    const hz = Math.max(0, (c.timing ?? 50) / 50);
     const layback = slow ? 0.014 : up ? 0.004 : 0.007; // 後ノリはテンポが速いほど浅く
     // 強弱の物語: モチーフ反復はだんだん強く、高音フレーズは時々あえて小さく弾く
     const motifGain = 1 + Math.min(0.18, (st.motifStep || 0) * 0.09);
@@ -1247,16 +1251,17 @@ export default function SlowhandInfinity() {
       const arcW = Math.sin(Math.PI * p); // スウィングの深さの山(中盤がピーク)
       const landing = k === evs.length - 1 && (e.d || 1) >= 2;
       const drive = !entry && !landing && k === evs.length - 2 && (e.d || 1) <= 1;
-      let t = gt(e.t)
-        + (isFast ? rnd(-0.003, 0.004) : entry ? rnd(-0.004, 0.003) : landing ? rnd(-0.002, 0.004) : rnd(-0.006, 0.01))
+      let t = gt(e.t) + hz * (
+          (isFast ? rnd(-0.003, 0.004) : entry ? rnd(-0.004, 0.003) : landing ? rnd(-0.002, 0.004) : rnd(-0.006, 0.01))
         + (entry ? 0 : landing ? layback * 1.25 : layback * (0.35 + 0.9 * arcW))
         - (drive ? rnd(0.004, 0.009) : 0)
         + (!isFast && !entry && e.t % 3 !== 0 ? rnd(0.003, (up ? 0.009 : 0.014) * (0.45 + 0.55 * arcW)) : 0) // 裏拍の遅れも位置で深浅
-        + (e.hd || 0);
+        + (e.hd || 0)
+      );
       const d = Math.max(0.05, (e.d || 1) * tri * (landing ? (slow ? 1.06 : 1.02) : slow ? 0.95 : 0.9)); // 着地音は余韻を残して長めに
       // スライドインは早めに滑り始め、目標音が拍のジャストに乗るようにする
       if (!slow && e.a && e.a.length === 3 && e.a[0] === "g") t -= Math.min(0.07, d * 0.2);
-      let vel = Math.min(1, (0.4 + energy * 0.3) * rnd(0.72, 1.18) * (e.t % 3 === 0 ? 1.08 : 0.92) * motifGain * softHigh) * (e.hv || 1);
+      let vel = Math.min(1, (0.4 + energy * 0.3) * rnd(0.72, 1.18) * (e.t % 3 === 0 ? 1.08 : 0.92) * motifGain * softHigh) * (1 + ((e.hv || 1) - 1) * hz);
       // 奏法連動のタッチ: チョーキングは強く、レガートは弱く、経過音は軽く、ロングトーンはしっかり
       if (["b", "bv", "B", "Bv", "pb", "ub", "db", "hb"].includes(e.a)) vel = Math.min(1, vel * 1.12);
       else if (e.a === "h") vel *= 0.78;
@@ -1753,6 +1758,7 @@ export default function SlowhandInfinity() {
             <Knob label="ドライブ" value={gtrDrive} onChange={setGtrDrive} />
             <Knob label="リバーブ" value={gtrRev} onChange={setGtrRev} />
             <Knob label="ビブラート" value={vibDepth} onChange={setVibDepth} />
+            <Knob label="タイミングのゆらぎ" value={timing} onChange={setTiming} />
             <Knob label="ギター音量" value={gtrVol} onChange={setGtrVol} />
             <Knob label="バッキング音量" value={bandVol} onChange={setBandVol} />
           </div>
@@ -1761,7 +1767,9 @@ export default function SlowhandInfinity() {
             マイナー/メジャーペンタトニック混合、フルチョーキング、クォーターチョーキング、遅く幅広いビブラート、
             Crossroads型反復リック、開放弦を使った低音域フレーズ(プルオフ・カスケード等)、12小節クイックチェンジ進行を実装。
             ヒューマンファクターとして後ノリのレイドバック、突っかかり(一瞬の遅れ)、チョーキング前のミュートした捨て音(×印)、
-            二度弾き、かすれ音を確率的に発生させます。ソロは止めるまで無限に続きます。
+            二度弾き、かすれ音を確率的に発生させます。「タイミングのゆらぎ」を0にするとレイドバックも突っかかりも消え、
+            グリッド上ちょうどにピッキングします(シャッフルの三連そのものはノリなので残ります)。
+            ソロは止めるまで無限に続きます。
           </p>
         </div>
       </div>
