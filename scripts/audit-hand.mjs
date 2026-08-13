@@ -8,7 +8,7 @@
    判定:
      手は4フレット幅(第8フレット以上はフレットが狭くなるので5フレット)。
      ポジションの外へ出る音は移動を要求する。移動が
-       - スライド系の奏法(sl / gl1 / gl2 / gv1 / gv2)で覆われている
+       - スライド系の奏法(sl / gl1 / gl2 / gv1 / gv2 / sd2 / sd3)で覆われている
        - 間合いが2単位(3連8分2つ)以上ある
      のいずれでもなく、3フレット以上動く場合を「覆われていない移動」とする。
    ============================================================================ */
@@ -25,12 +25,16 @@ const LICKS = lit(/const LICKS = \[[\s\S]*?\n\];/, "const LICKS =");
 const POS = lit(/const POS = \{[\s\S]*?\n\};/, "const POS =");
 const KEYS = lit(/const KEYS = \[[\s\S]*?\n\];/, "const KEYS =");
 
-const OPENS = [64, 59, 55, 50, 45, 40]; // 1弦→6弦の開放音
-const N_FRETS = 20;
-const SLIDES = new Set(["sl", "gl1", "gl2", "gv1", "gv2"]);
+const GTR_OPENS = lit(/const GTR_OPENS = \[[^\]]*\];/, "const GTR_OPENS =");
+const GTR_FRETS = Number(grab(/const GTR_FRETS = \d+/).match(/\d+/)[0]);
+const N_FRETS = GTR_FRETS;
+const SLIDES = new Set(["sl", "gl1", "gl2", "gv1", "gv2", "sd2", "sd3"]);
 const spanAt = (f) => (f >= 8 ? 5 : 4);
 
-/* 描画と同じ運指解決。箱ごとにひとつのオクターヴ補正を持つ */
+/* 運指の解決はアプリ本体の gtrPos をそのまま使う。検査と実物で規則がずれないように */
+const gtrPos = new Function("POS", "GTR_OPENS", "GTR_FRETS",
+  grab(/function gtrPos\(s, keyMidi, octAdj = 0\) \{[\s\S]*?\n\}/) + "\nreturn gtrPos;")(POS, GTR_OPENS, GTR_FRETS);
+
 function boxAdjust(fretOff) {
   let a = 0;
   const base = POS[0][1] + fretOff;
@@ -38,26 +42,7 @@ function boxAdjust(fretOff) {
   while (base + a > N_FRETS - 6) a -= 12;
   return a;
 }
-function fingering(s, keyMidi, adj) {
-  const fretOff = keyMidi - 57;
-  if (s >= -2) {
-    const p = POS[s] || (POS[s - 1] && [POS[s - 1][0], POS[s - 1][1] + 1]);
-    if (!p) return null;
-    let fr = p[1] + fretOff + adj;
-    if (fr < 0) fr += 12;
-    if (fr > N_FRETS) fr -= 12;
-    return { str: p[0], fret: fr };
-  }
-  const m = keyMidi + s;
-  let best = null;
-  for (let sn = 6; sn >= 1; sn--) {
-    const fr = m - OPENS[sn - 1];
-    if (fr < 0 || fr > N_FRETS) continue;
-    if (fr === 0) return { str: sn, fret: 0 };
-    if (!best || fr < best.fret) best = { str: sn, fret: fr };
-  }
-  return best;
-}
+const fingering = (s, keyMidi, adj) => gtrPos(s, keyMidi, adj);
 
 function auditLick(evs, keyMidi, adj) {
   const out = { notes: 0, shifts: 0, uncovered: [], unresolved: 0 };

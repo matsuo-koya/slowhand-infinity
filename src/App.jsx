@@ -477,7 +477,35 @@ const POS = {
   22: [1, 15], 23: [1, 16], 24: [1, 17],
 };
 
-const ART_LABEL = { b: "cho.", bv: "cho.+vib.", br: "cho.&rel.", pb: "pre-bend", q: "1/4 cho.", v: "vib.", sl: "slide", ds: "d.stop", ub: "unison cho.", db: "double cho.", B: "1.5 cho.", Bv: "1.5 cho.+vib.", tr: "trill", tr3: "trill(b3)", gl1: "slide-in", gl2: "slide-in", gv1: "slide-in+vib.", gv2: "slide-in+vib.", sb: "deep cho.+vib.", hb: "1/2 cho." };
+const GTR_OPENS = [64, 59, 55, 50, 45, 40]; // 1弦→6弦の開放音
+const GTR_FRETS = 20;
+/* 音度が指板のどこに落ちるか。表示・発音・検査でこの一箇所を使う */
+function gtrPos(s, keyMidi, octAdj = 0) {
+  const fretOff = keyMidi - 57;
+  if (s >= -2) {
+    const p = POS[s] || (POS[s - 1] && [POS[s - 1][0], POS[s - 1][1] + 1]);
+    if (!p) return null;
+    let fr = p[1] + fretOff + octAdj;
+    if (fr < 0) fr += 12;
+    if (fr > GTR_FRETS) fr -= 12;
+    return { str: p[0], fret: fr };
+  }
+  // 低音域は実音から解決(開放弦を優先)
+  const m = keyMidi + s;
+  let best = null;
+  for (let sn = 6; sn >= 1; sn--) {
+    const fr = m - GTR_OPENS[sn - 1];
+    if (fr < 0 || fr > GTR_FRETS) continue;
+    if (fr === 0) return { str: sn, fret: 0 };
+    if (!best || fr < best.fret) best = { str: sn, fret: fr };
+  }
+  return best;
+}
+/* 弦ごとのビブラートの深さ。巻き弦は張力が高く、同じ指の動きでも音程が動きにくい。
+   低音弦へ行くほど浅くなり、開放弦は押さえる指がないので揺らせない */
+const VIB_BY_STRING = [1, 1, 0.92, 0.76, 0.6, 0.48]; // 1弦→6弦
+
+const ART_LABEL = { b: "cho.", bv: "cho.+vib.", br: "cho.&rel.", pb: "pre-bend", q: "1/4 cho.", v: "vib.", sl: "slide", sd2: "slide↓", sd3: "slide↓", ds: "d.stop", ub: "unison cho.", db: "double cho.", B: "1.5 cho.", Bv: "1.5 cho.+vib.", tr: "trill", tr3: "trill(b3)", gl1: "slide-in", gl2: "slide-in", gv1: "slide-in+vib.", gv2: "slide-in+vib.", sb: "deep cho.+vib.", hb: "1/2 cho." };
 
 // ---------- main component ----------
 export default function SlowhandInfinity() {
@@ -694,7 +722,7 @@ export default function SlowhandInfinity() {
   const hold = (p, t) => { try { p.cancelAndHoldAtTime(t); } catch (e) { try { p.cancelScheduledValues(t); } catch (_) {} } };
 
   // アーティキュレーションのピッチ軌道(セント単位)を生成 — シンセ/サンプラー共通
-  const buildCents = (dur, art) => {
+  const buildCents = (dur, art, pos) => {
     const isTrill = art === "tr" || art === "tr3";
     const slideIn = !!art && art.length === 3 && art[0] === "g"; // gl1/gl2/gv1/gv2 = 下からのスライドイン
     const N = isTrill
@@ -709,7 +737,9 @@ export default function SlowhandInfinity() {
     const trillSeed = Math.random() * Math.PI * 2;
     let trPh = 0;
     // ビブラート: 速さは音ごとにばらつき(ロングトーンは遅く粘る)、周期も僅かにドリフトする
-    const vibRate = (dur >= 1 ? 4.7 : 5.1) + Math.random() * (dur >= 1 ? 0.3 : 0.6); // ロングトーンは速さのばらつきを抑える
+    // 短い音ほど周期は短い。長い音に乗る遅く幅広い揺れは、短い音には物理的に入らない
+    const vibRate = 4.7 + 3.4 * Math.max(0, Math.min(1, 1 - dur / 1.2))
+      + Math.random() * (dur >= 1 ? 0.3 : 0.6); // ロングトーンは速さのばらつきを抑える
     const vibSeed = Math.random() * Math.PI * 2;
     let vibPh = 0;
     for (let i = 0; i < N; i++) {
@@ -723,6 +753,11 @@ export default function SlowhandInfinity() {
       else if (art === "pb") { const rt = Math.min(0.18, dur * 0.4); c = tm < rt ? 200 * (1 - ease(tm / rt)) : 0; }
       else if (art === "q") { c = 45 * ease(Math.min(tm / 0.08, 1)); }
       else if (art === "sl") { const st = Math.min(0.09, dur * 0.3); c = tm < st ? -300 * (1 - ease(tm / st)) : 0; }
+      else if (art === "sd2" || art === "sd3") { // 上から滑り降りて着地する
+        const depth = art === "sd3" ? 300 : 200;
+        const st = Math.min(0.09, dur * 0.3);
+        c = tm < st ? depth * (1 - ease(tm / st)) : 0;
+      }
       else if (slideIn) { const depth = art[2] === "2" ? 200 : 100; const st = Math.min(0.11, dur * 0.3); c = tm < st ? -depth * (1 - ease(tm / st)) : 0; }
       else if (isTrill) {
         // ハンマリング/プリングの高速交互、tr=全音上、tr3=短3度上
@@ -744,8 +779,10 @@ export default function SlowhandInfinity() {
           const tv = tm - del;
           const ramp = Math.min(1, tv / (art === "sb" ? 0.18 : 0.3)); // 歌わせ版は速めに食いつく
           const grow = 1 + 0.5 * Math.min(1, tv / 1.1); // ロングトーンほど深く(最大約1.5倍、揺れ幅は安定重視)
-          const vibScale = (ctl.current.vibDepth ?? 70) / 50; // 50で従来の深さ
-          const depth = (soft ? 34 : 40) * ramp * grow * vibScale;
+          const vibScale = (ctl.current.vibDepth ?? 85) / 50; // 50で従来の深さ
+          // 低音弦ほど浅い。開放弦は揺らせない
+          const strScale = !pos ? 1 : pos.fret === 0 ? 0 : VIB_BY_STRING[pos.str - 1] ?? 1;
+          const depth = (soft ? 34 : 40) * ramp * grow * vibScale * strScale;
           // 半波ロブ: 弦を押し上げて戻す実際の指の動き。通常は基音から上へ、
           // チョーキング到達後(bv/Bv/sb)は到達音から下に戻す方向に粘る
           const lobe = 0.5 * (1 - Math.cos(vibPh));
@@ -760,7 +797,7 @@ export default function SlowhandInfinity() {
 
   // サンプラーボイス: 音ごとにAudioBufferSourceNodeを生成し、detuneにセントカーブを流す
   // ring=trueで前の音を消さずに重ねる(アルペジオのレットリング)
-  const playGtrSample = (au, v, midi, t, dur, art, vel, legato, ring) => {
+  const playGtrSample = (au, v, midi, t, dur, art, vel, legato, ring, pos) => {
     const bank = au.gtrBank;
     let root = null, best = 1e9;
     for (const m of bank.keys()) { const dd = Math.abs(m - midi); if (dd < best) { best = dd; root = m; } }
@@ -774,7 +811,7 @@ export default function SlowhandInfinity() {
       const toVal = det ? (c) => c : (c) => Math.pow(2, c / 1200);
       hold(param, t);
       if (!art || art === "dead") { param.setValueAtTime(toVal(baseC), t); return; }
-      const cents = buildCents(dur, art);
+      const cents = buildCents(dur, art, pos);
       const arr = new Float32Array(cents.length);
       for (let i = 0; i < cents.length; i++) arr[i] = toVal(baseC + cents[i]);
       try { param.setValueCurveAtTime(arr, t, cd); } catch (e) { param.setValueAtTime(toVal(baseC), t); }
@@ -824,10 +861,10 @@ export default function SlowhandInfinity() {
     return true;
   };
 
-  const playGtr = useCallback((vIdx, midi, t, dur, art, vel, legato, ring) => {
+  const playGtr = useCallback((vIdx, midi, t, dur, art, vel, legato, ring, pos) => {
     const au = A.current; if (!au) return;
     const v = au.voices[vIdx];
-    if (au.guitarIsSampler && playGtrSample(au, v, midi, t, dur, art, vel, legato, ring)) return;
+    if (au.guitarIsSampler && playGtrSample(au, v, midi, t, dur, art, vel, legato, ring, pos)) return;
     // ---- シンセフォールバック ----
     const base = midiFreq(midi);
     if (art === "dead") {
@@ -849,7 +886,7 @@ export default function SlowhandInfinity() {
         o.frequency.setValueAtTime(base, t);
       }
     } else {
-      const cents = buildCents(dur, art);
+      const cents = buildCents(dur, art, pos);
       const arr = new Float32Array(cents.length);
       for (let i = 0; i < cents.length; i++) arr[i] = base * Math.pow(2, cents[i] / 1200);
       for (const o of [v.o1, v.o2]) {
@@ -1218,6 +1255,21 @@ export default function SlowhandInfinity() {
         if (best != null && bd <= 4 && best !== sounded) f.s = Math.max(-17, Math.min(24, best - bU));
       }
     }
+    // 同一弦を2〜3フレット動くところは、指を滑らせて繋ぐことがある。
+    // 上行は既存のスライドイン(gl2=2フレット / sl=3フレット)、下行は上から滑り込む
+    for (let k = 1; k < evs.length; k++) {
+      const a = evs[k - 1], b = evs[k];
+      if (b.a || b.r || a.r) continue;                  // 既に奏法が付いた音と休符は触らない
+      if (b.t !== a.t + (a.d || 1)) continue;           // 隙間なく続く音だけ
+      // 表示・発音と同じ座標で判定する(オクターヴ移動を含めた音度)
+      const pa = gtrPos(a.s + shift, keyMidi), pb = gtrPos(b.s + shift, keyMidi);
+      if (!pa || !pb || pa.str !== pb.str) continue;    // 同一弦のみ
+      if (pa.fret === 0 || pb.fret === 0) continue;     // 開放弦は滑らせない
+      const df = pb.fret - pa.fret;
+      if (Math.abs(df) < 2 || Math.abs(df) > 3) continue;
+      if (Math.random() > 0.4) continue;                // 一定の頻度で
+      b.a = df > 0 ? (Math.abs(df) === 2 ? "gl2" : "sl") : Math.abs(df) === 2 ? "sd2" : "sd3";
+    }
     // 最高音域(1弦ハイポジション)に達したら次の小節でキメを出す
     st.peakArmed = evs.length > 0 && Math.max(...evs.map((e) => e.s + shift)) >= 18;
     st.lastDensity = evs.length; // ピアノが「聴いて」反応するためのフレーズ密度
@@ -1299,7 +1351,7 @@ export default function SlowhandInfinity() {
       // ダブルチョーキング(ub: 下の弦をベンドして上の実音とユニゾン / db: 2音とも押し上げる)
       if (e.a === "ub" || e.a === "db") {
         const main = (e.d || 1) >= 3 ? "bv" : "b";
-        playGtr(0, midi, t, d, main, vel, false);
+        playGtr(0, midi, t, d, main, vel, false, false, gtrPos(e.s + shift, keyMidi));
         logM(0, midi + 2, e.t / 3, (e.d || 1) / 3, vel);
         if (e.a === "ub") {
           playGtr(1, midi + 2, t + 0.008, d, (e.d || 1) >= 3 ? "v" : null, vel * 0.85, false);
@@ -1767,7 +1819,9 @@ export default function SlowhandInfinity() {
             マイナー/メジャーペンタトニック混合、フルチョーキング、クォーターチョーキング、遅く幅広いビブラート、
             Crossroads型反復リック、開放弦を使った低音域フレーズ(プルオフ・カスケード等)、12小節クイックチェンジ進行を実装。
             ヒューマンファクターとして後ノリのレイドバック、突っかかり(一瞬の遅れ)、チョーキング前のミュートした捨て音(×印)、
-            二度弾き、かすれ音を確率的に発生させます。「タイミングのゆらぎ」を0にするとレイドバックも突っかかりも消え、
+            二度弾き、かすれ音を確率的に発生させます。ビブラートは低音弦ほど浅く(巻き弦は張力が高い)、開放弦では掛かりません。
+            短い音ほど周期が短くなります。同一弦を2〜3フレット動くところは一定の頻度でスライドで繋ぎます。
+            「タイミングのゆらぎ」を0にするとレイドバックも突っかかりも消え、
             グリッド上ちょうどにピッキングします(シャッフルの三連そのものはノリなので残ります)。
             ソロは止めるまで無限に続きます。
           </p>
